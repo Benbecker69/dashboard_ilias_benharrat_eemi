@@ -14,54 +14,80 @@ import {
   CircleDollarSign,
   ChevronRight,
   PlusCircle,
+  Loader2,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/hooks/useAuth';
+import { dashboardService, appointmentsService } from '@/lib/services';
+import { DashboardStats, Appointment } from '@/lib/types';
+import { CreateAppointmentModal } from '@/components/modals/CreateAppointmentModal';
+import { EditAppointmentModal } from '@/components/modals/EditAppointmentModal';
+import { DeleteConfirmModal } from '@/components/modals/DeleteConfirmModal';
 
 export default function DashboardPage() {
-  const [currentDate, setCurrentDate] = useState('');
+  useAuth(); // Protéger la page - redirige vers login si non connecté
+
+  const [currentDate, setCurrentDate] = useState<string>('');
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [mounted, setMounted] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+
+  // Fonction pour charger les données (réutilisable pour le refresh)
+  const loadDashboardData = async () => {
+    try {
+      const [statsData, appointmentsData] = await Promise.all([
+        dashboardService.getStats(),
+        dashboardService.getTodayAppointments(),
+      ]);
+
+      setStats(statsData);
+      setAppointments(appointmentsData);
+      setError('');
+    } catch (err: any) {
+      console.error('Erreur chargement dashboard:', err);
+      setError(err.message || 'Erreur lors du chargement des données');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fonction pour ouvrir le modal d'édition
+  const handleEditAppointment = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setIsEditModalOpen(true);
+  };
+
+  // Fonction pour ouvrir le modal de suppression
+  const handleDeleteClick = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Fonction pour supprimer le rendez-vous
+  const handleDeleteConfirm = async () => {
+    if (!selectedAppointment) return;
+    await appointmentsService.deleteAppointment(selectedAppointment.id);
+    await loadDashboardData(); // Rafraîchir le dashboard
+  };
 
   useEffect(() => {
+    // Marquer comme monté côté client
+    setMounted(true);
     setCurrentDate(new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));
-  }, []);
-  const stats = [
-    {
-      name: 'RDV ce mois',
-      value: '12',
-      icon: CalendarDays,
-      change: '+4.5%',
-      changeType: 'positive' as const,
-      bgColor: 'bg-blue-500',
-      iconColor: 'text-blue-600',
-    },
-    {
-      name: 'Clients actifs',
-      value: '8',
-      icon: UsersRound,
-      change: '+2.1%',
-      changeType: 'positive' as const,
-      bgColor: 'bg-green-500',
-      iconColor: 'text-green-600',
-    },
-    {
-      name: 'Devis en cours',
-      value: '5',
-      icon: FileCheck,
-      change: '-1.2%',
-      changeType: 'negative' as const,
-      bgColor: 'bg-amber-500',
-      iconColor: 'text-amber-600',
-    },
-    {
-      name: 'CA du mois',
-      value: '45k€',
-      icon: CircleDollarSign,
-      change: '+18%',
-      changeType: 'positive' as const,
-      bgColor: 'bg-teal-500',
-      iconColor: 'text-teal-600',
-    },
-  ];
 
+    // Charger les données au montage
+    loadDashboardData();
+  }, []);
+
+  // Activités récentes (statiques pour l'instant)
   const recentActivities = [
     {
       id: 1,
@@ -92,36 +118,6 @@ export default function DashboardPage() {
     },
   ];
 
-  const upcomingAppointments = [
-    {
-      id: 1,
-      name: 'M. Bernard',
-      time: '14h30',
-      type: 'Installation',
-      address: '12 rue de la République, Lyon',
-      phone: '06 12 34 56 78',
-      status: 'urgent' as const
-    },
-    {
-      id: 2,
-      name: 'Mme Rousseau',
-      time: '16h00',
-      type: 'Visite technique',
-      address: '45 avenue Jean Jaurès, Villeurbanne',
-      phone: '07 98 76 54 32',
-      status: 'normal' as const
-    },
-    {
-      id: 3,
-      name: 'M. Lefebvre',
-      time: '17h30',
-      type: 'Signature',
-      address: '8 place Bellecour, Lyon',
-      phone: '06 45 67 89 10',
-      status: 'normal' as const
-    },
-  ];
-
   const getActivityBadge = (status: string) => {
     switch (status) {
       case 'completed':
@@ -135,6 +131,37 @@ export default function DashboardPage() {
     }
   };
 
+  // Afficher un loader pendant le chargement
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <Loader2 className="h-12 w-12 text-indigo-600 animate-spin mx-auto mb-4" />
+            <p className="text-lg text-gray-600">Chargement du dashboard...</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // Afficher une erreur si le chargement a échoué
+  if (error) {
+    return (
+      <AppLayout>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <p className="text-red-700">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Réessayer
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-8">
@@ -144,17 +171,17 @@ export default function DashboardPage() {
               <CalendarDays className="h-6 w-6 mr-3 text-indigo-600" />
               Rendez-vous du jour
             </h2>
-            <span className="text-base text-gray-600 bg-white px-4 py-2 rounded-full">
-              {currentDate}
+            <span className="text-base text-gray-600 bg-white px-4 py-2 rounded-full" suppressHydrationWarning>
+              {mounted ? currentDate : ''}
             </span>
           </div>
 
-          {upcomingAppointments.length > 0 ? (
+          {appointments.length > 0 ? (
             <div className="space-y-4">
-              {upcomingAppointments.map((appointment) => (
+              {appointments.map((appointment) => (
                 <div
                   key={appointment.id}
-                  className="flex items-center justify-between p-5 bg-white rounded-lg hover:shadow-md transition-all cursor-pointer border border-indigo-100"
+                  className="flex items-center justify-between p-5 bg-white rounded-lg hover:shadow-md transition-all border border-indigo-100"
                 >
                   <div className="flex items-center space-x-4">
                     <div className={`text-xl font-bold ${appointment.status === 'urgent' ? 'text-red-600' : 'text-indigo-700'}`}>
@@ -162,7 +189,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="h-10 w-px bg-gray-300"></div>
                     <div>
-                      <div className="font-display font-medium text-gray-900 text-base">{appointment.name}</div>
+                      <div className="font-display font-medium text-gray-900 text-base">{appointment.client.fullName}</div>
                       <div className="text-sm text-gray-500 flex items-center mt-1">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium mr-2 ${
                           appointment.type === 'Installation' ? 'bg-green-100 text-green-700' :
@@ -171,18 +198,32 @@ export default function DashboardPage() {
                         }`}>
                           {appointment.type}
                         </span>
-                        • {appointment.address.split(',')[1]}
+                        • {appointment.address.split(',')[0]}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <a
-                      href={`tel:${appointment.phone}`}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleEditAppointment(appointment)}
                       className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Modifier"
+                    >
+                      <Pencil className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteClick(appointment)}
+                      className="p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                    <a
+                      href={`tel:${appointment.client.phone}`}
+                      className="p-3 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="Appeler"
                     >
                       <PhoneCall className="h-5 w-5" />
                     </a>
-                    <ChevronRight className="h-5 w-5 text-gray-400" />
                   </div>
                 </div>
               ))}
@@ -195,67 +236,69 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
-            <div className="flex items-center justify-between mb-4">
-              <CalendarDays className="h-8 w-8 text-blue-200" />
-              <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                stats[0].changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
-              }`}>
-                {stats[0].change}
-              </span>
+        {stats && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <CalendarDays className="h-8 w-8 text-blue-200" />
+                <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                  stats.appointmentsThisMonth.changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
+                }`}>
+                  {stats.appointmentsThisMonth.change}
+                </span>
+              </div>
+              <div>
+                <p className="text-3xl font-display font-bold">{stats.appointmentsThisMonth.value}</p>
+                <p className="text-sm text-blue-100 mt-1">RDV ce mois</p>
+              </div>
             </div>
-            <div>
-              <p className="text-3xl font-display font-bold">{stats[0].value}</p>
-              <p className="text-sm text-blue-100 mt-1">{stats[0].name}</p>
-            </div>
-          </div>
 
-          <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
-            <div className="flex items-center justify-between mb-4">
-              <UsersRound className="h-8 w-8 text-green-200" />
-              <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                stats[1].changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
-              }`}>
-                {stats[1].change}
-              </span>
+            <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <UsersRound className="h-8 w-8 text-green-200" />
+                <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                  stats.activeClients.changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
+                }`}>
+                  {stats.activeClients.change}
+                </span>
+              </div>
+              <div>
+                <p className="text-3xl font-display font-bold">{stats.activeClients.value}</p>
+                <p className="text-sm text-green-100 mt-1">Clients actifs</p>
+              </div>
             </div>
-            <div>
-              <p className="text-3xl font-display font-bold">{stats[1].value}</p>
-              <p className="text-sm text-green-100 mt-1">{stats[1].name}</p>
-            </div>
-          </div>
 
-          <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
-            <div className="flex items-center justify-between mb-4">
-              <FileCheck className="h-8 w-8 text-amber-200" />
-              <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                stats[2].changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
-              }`}>
-                {stats[2].change}
-              </span>
+            <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <FileCheck className="h-8 w-8 text-amber-200" />
+                <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                  stats.quotesInProgress.changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
+                }`}>
+                  {stats.quotesInProgress.change}
+                </span>
+              </div>
+              <div>
+                <p className="text-3xl font-display font-bold">{stats.quotesInProgress.value}</p>
+                <p className="text-sm text-amber-100 mt-1">Devis en cours</p>
+              </div>
             </div>
-            <div>
-              <p className="text-3xl font-display font-bold">{stats[2].value}</p>
-              <p className="text-sm text-amber-100 mt-1">{stats[2].name}</p>
-            </div>
-          </div>
 
-          <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
-            <div className="flex items-center justify-between mb-4">
-              <CircleDollarSign className="h-8 w-8 text-purple-200" />
-              <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                stats[3].changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
-              }`}>
-                {stats[3].change}
-              </span>
-            </div>
-            <div>
-              <p className="text-3xl font-display font-bold">{stats[3].value}</p>
-              <p className="text-sm text-purple-100 mt-1">{stats[3].name}</p>
+            <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl p-7 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105">
+              <div className="flex items-center justify-between mb-4">
+                <CircleDollarSign className="h-8 w-8 text-purple-200" />
+                <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                  stats.revenue.changeType === 'positive' ? 'bg-green-400 text-green-900' : 'bg-red-400 text-red-900'
+                }`}>
+                  {stats.revenue.change}
+                </span>
+              </div>
+              <div>
+                <p className="text-3xl font-display font-bold">{stats.revenue.value}</p>
+                <p className="text-sm text-purple-100 mt-1">CA du mois</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card className="bg-white rounded-lg border border-gray-200">
@@ -354,7 +397,10 @@ export default function DashboardPage() {
             Actions rapides
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <button className="p-4 bg-white rounded-lg border-2 border-transparent hover:border-blue-300 hover:shadow-md transition-all group">
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="p-4 bg-white rounded-lg border-2 border-transparent hover:border-blue-300 hover:shadow-md transition-all group"
+            >
               <div className="flex flex-col items-center space-y-2">
                 <div className="p-3 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg group-hover:scale-110 transition-transform">
                   <CalendarDays className="h-6 w-6 text-blue-600" />
@@ -389,6 +435,30 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal de création de rendez-vous */}
+      <CreateAppointmentModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={loadDashboardData}
+      />
+
+      {/* Modal d'édition de rendez-vous */}
+      <EditAppointmentModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={loadDashboardData}
+        appointment={selectedAppointment}
+      />
+
+      {/* Modal de confirmation de suppression */}
+      <DeleteConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Supprimer le rendez-vous"
+        message={`Êtes-vous sûr de vouloir supprimer le rendez-vous avec ${selectedAppointment?.client.fullName} ? Cette action est irréversible.`}
+      />
     </AppLayout>
   );
 }

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   FileCheck,
   LayoutGrid,
+  LogOut,
   MailOpen,
   Menu,
   PhoneCall,
@@ -18,8 +19,9 @@ import {
   UsersRound,
   XCircle,
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import React, { useState } from "react";
+import { authService } from "@/lib/services";
 
 interface NavItem {
   name: string;
@@ -74,6 +76,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    authService.logout();
+    router.replace('/login');
+  };
 
   // Navigation item component
   const NavLink = ({
@@ -200,6 +208,19 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({
               <NavLink key={item.name} item={item} isMobile />
             ))}
           </nav>
+
+          <div className="border-t border-gray-200 p-4">
+            <button
+              onClick={() => {
+                handleLogout();
+                setSidebarOpen(false);
+              }}
+              className="w-full flex items-center px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <LogOut className="h-5 w-5 mr-3" />
+              <span className="font-medium">Se déconnecter</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -297,6 +318,13 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({
                 <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
               </button>
 
+              <button
+                onClick={handleLogout}
+                className="p-2.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                title="Se déconnecter"
+              >
+                <LogOut className="h-6 w-6" />
+              </button>
             </div>
           </div>
         </header>
